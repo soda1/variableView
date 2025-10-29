@@ -7,20 +7,33 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonNull;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonPrimitive;
+import com.intellij.debugger.DebuggerManagerEx;
 import com.intellij.debugger.engine.JavaStackFrame;
+import com.intellij.debugger.engine.JavaValue;
 import com.intellij.debugger.engine.evaluation.EvaluateException;
+import com.intellij.debugger.impl.DebuggerSession;
 import com.intellij.debugger.jdi.LocalVariableProxyImpl;
 import com.intellij.debugger.jdi.StackFrameProxyImpl;
+import com.intellij.debugger.ui.impl.watch.ValueDescriptorImpl;
 import com.intellij.openapi.actionSystem.AnAction;
 import com.intellij.openapi.actionSystem.AnActionEvent;
 import com.intellij.openapi.project.Project;
+import com.intellij.ui.SimpleTextAttributes;
 import com.intellij.xdebugger.XDebugSession;
 import com.intellij.xdebugger.XDebuggerManager;
+import com.intellij.xdebugger.evaluation.XDebuggerEvaluator;
+import com.intellij.xdebugger.frame.XCompositeNode;
+import com.intellij.xdebugger.frame.XDebuggerTreeNodeHyperlink;
 import com.intellij.xdebugger.frame.XStackFrame;
 
+import com.intellij.xdebugger.frame.XValue;
+import com.intellij.xdebugger.frame.XValueChildrenList;
 import com.sun.jdi.*;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
+import javax.swing.*;
+import javax.swing.tree.DefaultMutableTreeNode;
 import java.util.*;
 
 
@@ -70,46 +83,66 @@ public class ContextValueParser {
     /**
      * 解析当前调试帧中的 context 变量
      */
-    public static void parseContext(Project project) {
-        if (project == null) return;
+    public static DefaultMutableTreeNode parseContext(Project project) {
+        if (project == null) return new DefaultMutableTreeNode("project Null");
+        DebuggerSession session = DebuggerManagerEx.getInstanceEx(project)
+                .getContext().getDebuggerSession();
 
-        XDebugSession session = XDebuggerManager.getInstance(project).getCurrentSession();
-        if (session == null) return;
-
-        XStackFrame currentFrame = session.getCurrentStackFrame();
-        if (!(currentFrame instanceof JavaStackFrame)) return;
-
-        JavaStackFrame javaFrame = (JavaStackFrame) currentFrame;
-        StackFrameProxyImpl stackFrameProxy = javaFrame.getStackFrameProxy();
-
+        if (session == null) return new DefaultMutableTreeNode("not start debug");
+        StackFrameProxyImpl stackFrameProxy = session.getProcess()
+                .getDebuggerContext()
+                .getFrameProxy();
         try {
-            LocalVariableProxyImpl targetVar = stackFrameProxy.visibleVariableByName(TARGET_VARIABLE_NAME);
-            if (targetVar == null) {
-                System.out.println("在当前栈帧中未找到变量: " + TARGET_VARIABLE_NAME);
-                return;
-            }
-
-            Value mapValue = stackFrameProxy.getValue(targetVar);
-
-            if (!(mapValue instanceof ObjectReference)) {
-                System.out.println("变量 '" + TARGET_VARIABLE_NAME + "' 不是一个对象。");
-                return;
-            }
-
-            JsonElement jsonTree = convertJdiValueToJson((ObjectReference) mapValue, stackFrameProxy, new HashSet<>());
+            ObjectReference objectReference = stackFrameProxy.thisObject();
+            ObjectReference scriptInstance = (ObjectReference) objectReference;
+            Field bindingField = scriptInstance.referenceType().fieldByName("binding");
+            Value bindingValue = scriptInstance.getValue(bindingField);
+            ObjectReference bindingObject = (ObjectReference) bindingValue;
+            Field varsField = bindingObject.referenceType().fieldByName("variables");
+            Value varsValue = bindingObject.getValue(varsField);
+            ObjectReference varsMap = (ObjectReference) varsValue;
+            Method getMethod = varsMap.referenceType().methodsByName("get", "(Ljava/lang/Object;)Ljava/lang/Object;").get(0);
+            Value arg = session.getProcess().getVirtualMachineProxy().mirrorOf("_context");
+            Value contextValue = varsMap.invokeMethod(
+                    stackFrameProxy.threadProxy().getThreadReference(),
+                    getMethod,
+                    List.of(arg),
+                    ObjectReference.INVOKE_SINGLE_THREADED
+            );
+            JsonElement jsonTree = convertJdiValueToJson((ObjectReference) contextValue, stackFrameProxy, new HashSet<>());
 
             Gson gson = new GsonBuilder().setPrettyPrinting().create();
-            String jsonString = gson.toJson(jsonTree);
-
-            System.out.println("--- " + TARGET_VARIABLE_NAME + " 的 JSON 对象树 ---");
-            System.out.println(jsonString);
-            System.out.println("--- 结束 ---");
-
+            // String jsonString = gson.toJson(jsonTree);
+            DefaultMutableTreeNode root = new DefaultMutableTreeNode("_context");
+            buildTree(jsonTree, root);
+            return root;
+            // System.out.println("--- " + TARGET_VARIABLE_NAME + " 的 JSON 对象树 ---");
+            // System.out.println(jsonString);
+            // System.out.println("--- 结束 ---");
         } catch (Exception ex) {
             ex.printStackTrace();
+            return new DefaultMutableTreeNode("parse err");
         }
     }
 
+
+    private static void buildTree(JsonElement element, DefaultMutableTreeNode parent) {
+        if (element.isJsonObject()) {
+            JsonObject jsonObject = element.getAsJsonObject();
+            for (Map.Entry<String, JsonElement> entry : jsonObject.entrySet()) {
+                DefaultMutableTreeNode childNode = new DefaultMutableTreeNode(entry.getKey());
+                parent.add(childNode);
+                buildTree(entry.getValue(), childNode);
+            }
+        } else if (element.isJsonArray()) {
+            JsonArray jsonArray = element.getAsJsonArray();
+            for (int i = 0; i < jsonArray.size(); i++) {
+                buildTree(jsonArray.get(i), parent);
+            }
+        } else if (element.isJsonPrimitive()) {
+            parent.add(new DefaultMutableTreeNode(element.getAsString()));
+        }
+    }
 
     private static JsonElement convertJdiValueToJson(Value value, StackFrameProxyImpl frameProxy, Set<Long> visitedIds) throws Exception {
         if (value == null) {

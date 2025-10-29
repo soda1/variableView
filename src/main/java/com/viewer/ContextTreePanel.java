@@ -25,12 +25,29 @@ public class ContextTreePanel {
         this.mainPanel.add(new JScrollPane(tree), BorderLayout.CENTER);
         JButton refreshButton = new JButton("Refresh Context");
         refreshButton.addActionListener(e -> {
-            ContextValueParser.parseContext(project);
-            DefaultMutableTreeNode root = new DefaultMutableTreeNode("context");
+            DefaultMutableTreeNode root = ContextValueParser.parseContext(project);
             tree.setModel(new DefaultTreeModel(root));
+            expandToLevel(tree, 3);
         });
         mainPanel.add(refreshButton, BorderLayout.NORTH);
         setupListeners();
+    }
+
+    private void expandToLevel(JTree tree, int level) {
+        DefaultMutableTreeNode root = (DefaultMutableTreeNode) tree.getModel().getRoot();
+        java.util.Queue<javax.swing.tree.TreePath> queue = new java.util.LinkedList<>();
+        queue.add(new javax.swing.tree.TreePath(root));
+
+        while (!queue.isEmpty()) {
+            javax.swing.tree.TreePath path = queue.poll();
+            if (path.getPathCount() <= level) {
+                tree.expandPath(path);
+                DefaultMutableTreeNode node = (DefaultMutableTreeNode) path.getLastPathComponent();
+                for (int i = 0; i < node.getChildCount(); i++) {
+                    queue.add(path.pathByAddingChild(node.getChildAt(i)));
+                }
+            }
+        }
     }
 
     private void setupListeners() {
