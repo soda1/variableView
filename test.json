@@ -1,0 +1,19 @@
+{
+    "_context": {
+        "persons": [
+            {
+                "name": "eric",
+                "age": 18
+            },
+            {
+                "name": "john",
+                "age": 17
+            }
+        ],
+        "adreess": "213234234",
+        "person":{
+
+        },
+        "list":[]
+    }
+}

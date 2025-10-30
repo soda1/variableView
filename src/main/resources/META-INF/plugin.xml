@@ -27,21 +27,18 @@
     <!-- Extension points defined by the plugin.
          Read more: https://plugins.jetbrains.com/docs/intellij/plugin-extension-points.html -->
     <extensions defaultExtensionNs="com.intellij">
-        <toolWindow id="Context Viewer"
-                    anchor="right"
-                    factoryClass="com.viewer.ContextTreeToolWindowFactory"/>
+        <toolWindow id="JSON Structure Viewer" anchor="right" factoryClass="com.viewer.JsonToolWindowFactory"/>
+
+        <!-- Register the Settings Page -->
+        <applicationConfigurable parentId="tools"
+                                 instance="com.viewer.JsonViewerConfigurable"
+                                 id="com.yourcompany.jsonstructureviewer.settings.JsonViewerConfigurable"
+                                 displayName="JSON Structure Viewer"/>
+        <applicationService serviceImplementation="com.viewer.JsonViewerSettingsState"/>
+<!--        <toolWindow id="Context Viewer"-->
+<!--                    anchor="right"-->
+<!--                    factoryClass="com.viewer.ContextTreeToolWindowFactory"/>-->
     </extensions>
     <actions>
-        <action id="com.viewer.HelloWorldAction"
-                class="com.viewer.HelloWorldAction"
-                text="Hello World"
-                description="A simple hello world action."
-                icon="AllIcons.Actions.Execute">
-            <add-to-group group-id="MainMenu" anchor="last"/>
-        </action>
-        <action id="helloTest" class="com.viewer.HelloAction" text="hello" description="hello">
-            <add-to-group group-id="ToolsMenu" anchor="first"></add-to-group>
-        </action>
-
     </actions>
 </idea-plugin>
