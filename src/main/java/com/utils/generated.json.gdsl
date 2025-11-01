@@ -1,0 +1,9 @@
+package com.utils
+/**
+ * This is a sample GDSL to provide code completion for a custom context variable `_context`.
+ */
+
+contributor(context(scope: scriptScope(), filetypes: ["groovy"])) {
+    property name: "_context", type: "com.eric.groovy.ContextRoot"
+}
+println "Loaded custom GDSL!"
